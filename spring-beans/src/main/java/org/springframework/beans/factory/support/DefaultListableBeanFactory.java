@@ -130,15 +130,13 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		implements ConfigurableListableBeanFactory, BeanDefinitionRegistry, Serializable {
 
 	/**
-	 * System property that instructs Spring to enforce string locking during bean creation,
+	 * System property that instructs Spring to enforce strict locking during bean creation,
 	 * rather than the mix of strict and lenient locking that 6.2 applies by default. Setting
 	 * this flag to "true" restores 6.1.x style locking in the entire pre-instantiation phase.
 	 * @since 6.2.6
 	 * @see #preInstantiateSingletons()
 	 */
 	public static final String STRICT_LOCKING_PROPERTY_NAME = "spring.locking.strict";
-
-	private static final boolean lenientLockingAllowed = !SpringProperties.getFlag(STRICT_LOCKING_PROPERTY_NAME);
 
 	private static @Nullable Class<?> jakartaInjectProviderClass;
 
@@ -157,6 +155,9 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 	/** Map from serialized id to factory instance. */
 	private static final Map<String, Reference<DefaultListableBeanFactory>> serializableFactories =
 			new ConcurrentHashMap<>(8);
+
+	/** Whether lenient locking is allowed in this factory. */
+	private final boolean lenientLockingAllowed = !SpringProperties.getFlag(STRICT_LOCKING_PROPERTY_NAME);
 
 	/** Optional id for this factory, for serialization purposes. */
 	private @Nullable String serializationId;
@@ -626,9 +627,14 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 							}
 						}
 						else {
-							if (includeNonSingletons || isNonLazyDecorated ||
-									(allowFactoryBeanInit && isSingleton(beanName, mbd, dbd))) {
+							if (includeNonSingletons || isNonLazyDecorated) {
 								matchFound = isTypeMatch(beanName, type, allowFactoryBeanInit);
+							}
+							else if (allowFactoryBeanInit) {
+								// Type check before singleton check, avoiding FactoryBean instantiation
+								// for early FactoryBean.isSingleton() calls on non-matching beans.
+								matchFound = isTypeMatch(beanName, type, allowFactoryBeanInit) &&
+										isSingleton(beanName, mbd, dbd);
 							}
 							if (!matchFound) {
 								// In case of FactoryBean, try to match FactoryBean instance itself next.
@@ -1035,7 +1041,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 
 	@Override
 	protected @Nullable Boolean isCurrentThreadAllowedToHoldSingletonLock() {
-		return (lenientLockingAllowed && this.preInstantiationPhase ?
+		return (this.lenientLockingAllowed && this.preInstantiationPhase ?
 				this.preInstantiationThread.get() != PreInstantiation.BACKGROUND : null);
 	}
 
