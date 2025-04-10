@@ -49,6 +49,10 @@ import org.springframework.util.StringUtils;
  */
 public class DefaultResourceLoader implements ResourceLoader {
 
+	static {
+		System.out.println("Loading default resource loader");
+	}
+
 	private @Nullable ClassLoader classLoader;
 
 	private final Set<ProtocolResolver> protocolResolvers = new LinkedHashSet<>(4);
